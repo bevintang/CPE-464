@@ -4,7 +4,6 @@
 
 CC = gcc
 CFLAGS = -g -Wall 
-#CFLAGS = -g
 
 all:  trace
 
