@@ -5,8 +5,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netinet/if_ether.h>	//MAC_OSX
-//#include <netinet/ether.h>		//LINUX
+//#include <netinet/if_ether.h>	//MAC_OSX
+#include <netinet/ether.h>		//LINUX
 #include "checksum.h"
 #include "headerStructs.h"
 
