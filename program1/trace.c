@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/if_ether.h>	//MAC_OSX
+//#include <netinet/ether.h>		//LINUX
 #include "checksum.h"
 #include "headerStructs.h"
 
@@ -16,7 +17,7 @@
 #define ICMP 1
 #define TCP 6
 #define UDP 17
-#define ETH_LEN 14;	//14-byte ethernet header
+#define ETH_LEN 14	//14-byte ethernet header
 
 /* Helper -- Check valid number of arguments */
 void checkArgs(int argc){
@@ -90,7 +91,7 @@ void printIPHeader(const u_char** pkt_data, struct ip_header** ip_head){
 	else if (protocol == UDP)
 		printf("\t\tProtocol: UDP\n");
 	else
-		printf("\t\tUnknown Protocol\n");
+		printf("\t\tProtocol: Unknown\n");
 	
 	// Checksum
 	if (in_cksum((unsigned short*)*pkt_data, 4*header->hdr_len) == 0)
@@ -116,8 +117,10 @@ void printARPHeader(const u_char* pkt_data){
 	// Opcode
 	if (ntohs(header->opcode) == 0x0001)
 		printf("\t\tOpcode: Request\n");
-	else if (ntohs(header->opcode == 0x0000))
+	else if (ntohs(header->opcode) == 0x0002)
 		printf("\t\tOpcode: Reply\n");
+	else
+		printf("\t\tOpcode: 0x%04x\n", ntohs(header->opcode));
 	printf("\t\tSender MAC: %s\n", ether_ntoa((const struct ether_addr *)header->send_MAC));
 	printf("\t\tSender IP: %s\n", inet_ntoa(send_ip));
 	printf("\t\tTarget MAC: %s\n", ether_ntoa((const struct ether_addr *)header->targ_MAC));
@@ -131,8 +134,10 @@ void printICMPHeader(const u_char* pkt_data) {
 	printf("\tICMP Header\n");
 	if (header->type == PING_REPLY)
 		printf("\t\tType: Reply\n\n");
-	else
+	else if (header->type == PING_REQUEST)
 		printf("\t\tType: Request\n\n");
+	else
+		printf("\t\tType: %d\n\n", header->type);
 }
 
 /* Helper -- Extract UDP header data into a struct & print contents */
@@ -259,7 +264,6 @@ int main (int argc, char* argv[]){
 				printUDPHeader(pkt_data);
 				break;
 			default:
-				printf("Protocol: Unknown\n");
 				break;
 		}
 	}
