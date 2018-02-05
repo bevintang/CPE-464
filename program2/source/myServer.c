@@ -108,14 +108,16 @@ void run(int serverSocket, int portNumber, char* buf, int* numClients,
 		Client* clients, int* maxFd) {
 	fd_set fds;
 
-	FD_ZERO(&fds);
-	FD_SET(serverSocket, &fds);
-	setClients(&fds, numClients, clients, maxFd);
+	while (1) {
+		FD_ZERO(&fds);
+		FD_SET(serverSocket, &fds);
+		setClients(&fds, numClients, clients, maxFd);
 
-	select(*maxFd + 1, &fds, NULL, NULL, NULL);
+		select(*maxFd + 1, &fds, NULL, NULL, NULL);
 
-	checkNewClient(serverSocket, &fds, numClients, maxFd, clients);
-	checkClients(&fds, numClients, clients, maxFd, buf);
+		checkNewClient(serverSocket, &fds, numClients, maxFd, clients);
+		checkClients(&fds, numClients, clients, maxFd, buf);
+	}
 }
 
 int main(int argc, char *argv[])
@@ -128,9 +130,7 @@ int main(int argc, char *argv[])
 	portNumber = checkArgs(argc, argv);			// get port number
 	serverSocket = tcpServerSetup(portNumber);	// create server socket
 	maxFd = serverSocket;
-	while (1){
-		run(serverSocket, portNumber, buf, &numClients, clients, &maxFd);	
-	}
+	run(serverSocket, portNumber, buf, &numClients, clients, &maxFd);	
 	close(serverSocket);
 	return 0;
 }

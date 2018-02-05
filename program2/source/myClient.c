@@ -48,7 +48,7 @@ void sendToServer(int socketNum)
 	int sent = 0;           // actual amount of data sent/* get the data and send it   */
 
 	while (memcmp(sendBuf, "%E", 2) != 0 && memcmp(sendBuf, "%e", 2) != 0){
-		printf("Enter the data to send: ");
+		printf("$: ");
 		scanf(" %" xstr(MAXBUF) "[^\n]%*[^\n]", sendBuf);
 		
 		sendLen = strlen(sendBuf) + 1;
