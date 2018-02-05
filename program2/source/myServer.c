@@ -43,6 +43,7 @@ int checkExitCommand(char* buf, int* numClients, int clientSocket) {
 	close(clientSocket);		// close socket
 	// free entry in handle array
 	(* numClients) = (* numClients) - 1;
+	printf("Client at socket %d closed\n", clientSocket);
 	return 1;
 }
 
@@ -111,7 +112,7 @@ void run(int serverSocket, int portNumber, char* buf, int* numClients,
 	while (1) {
 		FD_ZERO(&fds);
 		FD_SET(serverSocket, &fds);
-		setClients(&fds, numClients, clients, maxFd);
+		setClients(&fds, numClients, clients, maxFd); 
 
 		select(*maxFd + 1, &fds, NULL, NULL, NULL);
 
