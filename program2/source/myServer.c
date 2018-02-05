@@ -35,18 +35,6 @@ void error(char* message) {
 	printf("%s\n", message);
 }
 
-int checkExitCommand(char* buf, int* numClients, int clientSocket) {
-	if (memcmp(buf, "%E", 2) != 0 && memcmp(buf, "%e", 2) != 0){
-		return 0;
-	}
-	// Case client has quit
-	close(clientSocket);		// close socket
-	// free entry in handle array
-	(* numClients) = (* numClients) - 1;
-	printf("Client at socket %d closed\n", clientSocket);
-	return 1;
-}
-
 /* Sets the fd of the set where clients occupy the corresponding socket number */
 void setClients(fd_set* fds, int* numClients, Client* clients, int* maxFd) {
 	int clientSocket = 0;
@@ -59,24 +47,44 @@ void setClients(fd_set* fds, int* numClients, Client* clients, int* maxFd) {
 	}
 }
 
+void addNewClient(int clientSocket, Client* clients, int* numClients, int* maxFd) {
+	Client newClient;
+
+	// Intialize values
+	newClient.fd = clientSocket;
+	memcpy(newClient.handle, "Bob", 3);
+	clients[clientSocket] = newClient;
+	printf("Added new client at socket: %d\n", clientSocket);
+	(* numClients) = (* numClients) + 1;
+
+	// Check if there is a new maxFd
+	if (clientSocket > *maxFd) {
+		*maxFd = clientSocket;
+	 }
+}
+
 /* Checks to see if there is a new client connecting to the server */
 void checkNewClient(int serverSocket, fd_set* fds, int* numClients, int* maxFd,
 		Client* clients) {
 
 	int clientSocket = 0;
-	Client newClient;
 
-	newClient.fd = 0;
 	if (FD_ISSET(serverSocket, fds)){
 		clientSocket = tcpAccept(serverSocket, DEBUG_FLAG); // get new client fd
-		newClient.fd = clientSocket;
-		memcpy(newClient.handle, "Bob", 3);
-		clients[clientSocket] = newClient;
-		(* numClients) = (* numClients) + 1;
-		if (clientSocket > *maxFd) {
-			*maxFd = clientSocket;
-		}
+		addNewClient(clientSocket, clients, numClients, maxFd);
 	}
+}
+
+int checkExitCommand(char* buf, int* numClients, int clientSocket) {
+	if (memcmp(buf, "%E", 2) != 0 && memcmp(buf, "%e", 2) != 0){
+		return 0;
+	}
+	// Case client has quit
+	close(clientSocket);		// close socket
+	// free entry in handle array
+	(* numClients) = (* numClients) - 1;
+	printf("Client at socket %d closed\n", clientSocket);
+	return 1;
 }
 
 /* Checks to see if clients have any pending requests */
