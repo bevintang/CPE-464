@@ -45,7 +45,7 @@ void attachChatHeader(uint8_t* sendBuf, uint16_t size, uint8_t flag) {
 void initConnection(int socketNum, char** argv, uint8_t* sendBuf) {
 	attachChatHeader(sendBuf, strlen(argv[1]) + CHAT_HEADER_SIZE, NEW_CLIENT);
 	memcpy(sendBuf + CHAT_HEADER_SIZE, argv[1], strlen(argv[1]));
-	sendToServer(socketNum, sendBuf, strlen(argv[1]) + CHAT_HEADER_SIZE, 0);
+	sendToServer(socketNum, sendBuf, strlen(argv[1]), 0);
 }
 
 int parseID(char* token) {
@@ -121,7 +121,7 @@ void sendMessageBuf(uint8_t* sendBuf, char** tokens, int numTokens,
 	uint8_t tokLen = 0;
 
 	bzero(sendBuf, MAXBUF);
-	attachChatHeader(sendBuf, messageLength+handLen, (uint8_t)MESSAGE);
+	attachChatHeader(sendBuf, messageLength+handLen+strlen(text), (uint8_t)MESSAGE);
 
 	// Attach Client's Handle Name
 	sendBuf[bufPos++] = (uint8_t)handLen;
@@ -138,8 +138,9 @@ void sendMessageBuf(uint8_t* sendBuf, char** tokens, int numTokens,
 
 	// Now attach message
 	memcpy(sendBuf+bufPos, text, strlen(text));
+	sendBuf[bufPos+strlen(text)] = '\0';
 	printf("Client: %s\n", text);
-	sendToServer(socketNum, sendBuf, messageLength + handLen + 4, 0);
+	sendToServer(socketNum, sendBuf, messageLength + handLen + strlen(text)+1, 0);
 }
 
 void sendMessage(uint8_t* sendBuf, char* input, int socketNum, uint8_t* thisHandle,
