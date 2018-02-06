@@ -124,6 +124,7 @@ void recvFromClient(Client* clients, int clientSocket, uint8_t* buf)
 {
 	int messageLen = 0;
 	
+	bzero(buf, MAXBUF);
 	if ((messageLen = recv(clientSocket, buf, MAXBUF, 0)) < 0)
 	{
 		perror("recv call");
@@ -134,7 +135,6 @@ void recvFromClient(Client* clients, int clientSocket, uint8_t* buf)
 
 	// Display buffer contents
 	printf("Message received, length: %d Data: %s\n", messageLen, buf+3);
-	printf("Current contents of buf: %s\n\n", buf+3);
 }
 
 void recvRequest(int clientSocket, fd_set* fds, uint8_t* buf, int* numClients,

@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -27,6 +28,7 @@
 #define LIST 10		// flag = 10
 #define EXIT 8		// flag = 8
 #define NEW_CLIENT 69
+#define CHAT_HEADER_SIZE 3
 #define xstr(a) str(a)
 #define str(a) #a
 
@@ -34,16 +36,16 @@ void sendToServer(int socketNum, uint8_t* sendBuf, int sendLen, int sendFlag);
 void checkArgs(int argc, char * argv[]);
 
 void attachChatHeader(uint8_t* sendBuf, uint16_t size, uint8_t flag) {
-	uint16_t trueSize = htons(size + 3);
-	sendBuf[0] = ((trueSize & 0xff00) >> 8);	// insert leading byte
-	sendBuf[1] = trueSize & 0x00ff;				// insert trailing byte
+	uint16_t trueSize = htons(size + CHAT_HEADER_SIZE);
+	sendBuf[0] = ((trueSize & 0xff00) >> 8);	// insert MSB
+	sendBuf[1] = trueSize & 0x00ff;				// insert LSB
 	sendBuf[2] = flag;
 }
 
 void initConnection(int socketNum, char** argv, uint8_t* sendBuf) {
-	attachChatHeader(sendBuf, strlen(argv[1]) + 3, NEW_CLIENT);
-	memcpy(sendBuf+3, argv[1], strlen(argv[1]));
-	sendToServer(socketNum, sendBuf, strlen(argv[1]) + 3, 0);
+	attachChatHeader(sendBuf, strlen(argv[1]) + CHAT_HEADER_SIZE, NEW_CLIENT);
+	memcpy(sendBuf + CHAT_HEADER_SIZE, argv[1], strlen(argv[1]));
+	sendToServer(socketNum, sendBuf, strlen(argv[1]) + CHAT_HEADER_SIZE, 0);
 }
 
 int parseID(char* token) {
@@ -78,56 +80,133 @@ uint16_t getPacketLength(char** tokens, int numTokens) {
 	return totalLength;
 }
 
-void sendMessage(uint8_t* sendBuf, char* input, int socketNum, uint8_t* thisHandle) {
-	uint16_t totalLength = 0;
-	int bufPos = 3;		// position after chat-header
-	int curLength = 0;	// length of each token
-	char* tokens[30];
-	int i = 0, numTokens = 0;
+int setNumDestHandles(char* token, int* numDestHandles) {
+	int startsWithNumber = 0;
 
-	// Split input into %M tokens -- making sure to leave 
-	tokens[0] = strtok(input, " ");
-	for (i = 0; i < 2; i++) {
-		tokens[i] = strtok(NULL, " ");	// grab command and number of handles
+	if (strlen(token) == 1) {
+		if (isdigit(token[0])) { 
+			*numDestHandles = atoi(token);
+		}
+		else {
+			*numDestHandles = 1;
+		}
 	}
-	/*
-		I STOPPED RIGHT HERE BEFORE SHOWERING
-	*/
+	else {
+		if ( isdigit(token[0])) {
+			startsWithNumber = 1;
+		}
 
-	totalLength = getPacketLength(tokens, numTokens);
-
-	// Setup sendBuf for Message Send
-	attachChatHeader(sendBuf, totalLength, (uint8_t)MESSAGE);
-	for (i = 0; i < numTokens; i++) {
-		curLength = strlen(tokens[i]);
-		memcpy(sendBuf+bufPos, tokens[i], curLength);
-		bufPos += curLength;
-		printf("\tClient side String: %s\n", tokens[i]);
-		printf("\tLast letter in buf: %c\n", sendBuf[bufPos-1]);
+		// Must deal with case where user does not enter number of handles
+		// if this is the case, the token in question IS the name of the destination
+		// so we do not want to add any more entries to the token list
+		*numDestHandles = 0;
 	}
-
-	sendToServer(socketNum, sendBuf, totalLength, 0);
+	return startsWithNumber;
 }
 
-void parseCommand(char* input, uint8_t* sendBuf, int socketNum, uint8_t* thisHandle) {
+void setNumMessages(int length, int* numMessages) {
+	int textLen = length;
+	while (textLen > 200) {
+		*numMessages = *numMessages + 1;
+		textLen -= 200;
+	}
+}
+
+void sendMessageBuf(uint8_t* sendBuf, char** tokens, int numTokens, 
+		uint16_t messageLength, char* text, int socketNum, uint8_t* thisHandle,
+		int handLen) {
+
+	int bufPos = CHAT_HEADER_SIZE;
+	int i = 0;
+	uint8_t tokLen = 0;
+
+	bzero(sendBuf, MAXBUF);
+	attachChatHeader(sendBuf, messageLength+handLen, (uint8_t)MESSAGE);
+
+	// Attach Client's Handle Name
+	sendBuf[bufPos++] = (uint8_t)handLen;
+	memcpy(sendBuf + bufPos, thisHandle, handLen);
+	bufPos += handLen;
+	for (i = 0; i < numTokens; i++) {
+		tokLen = strlen(tokens[i]);
+		sendBuf[bufPos] = tokLen;
+		memcpy(sendBuf+bufPos+1, tokens[i], tokLen);
+		bufPos += tokLen+1;
+
+		printf("\tClient side token: %s\n", tokens[i]);
+	}
+
+	// Now attach message
+	memcpy(sendBuf+bufPos, text, strlen(text));
+	printf("Client: %s\n", text);
+	sendToServer(socketNum, sendBuf, messageLength + handLen + 4, 0);
+}
+
+void sendMessage(uint8_t* sendBuf, char* input, int socketNum, uint8_t* thisHandle,
+		int handLen) {
+	uint16_t messageLength = 0;
+	char* tokens[30], *text, subtext[200];
+	int i = 0;
+	int numTokens = 0, numDestHandles = 0;
+	int numMessages = 1, textPos = 0, textLen = 0;
+
+	bzero(sendBuf, MAXBUF);
+
+	// Split input into %M tokens
+	tokens[0] = strtok(input, " ");		// %M command
+	tokens[1] = strtok(NULL, " ");		// either number of handles or a handle itself
+	numTokens += 2;
+
+	if (setNumDestHandles(tokens[1], &numDestHandles)) {
+		printf("Invalid handle, handle starts with a number\n");
+		return;
+	}
+	if (numDestHandles > 9) {
+		printf("Please only enter up to 9 Handles\n");
+		return;
+	}
+
+	// Let each handle have its own token -- do not split text message
+	for (i = 0; i < numDestHandles; i++) {
+		tokens[i+2] = strtok(NULL, " ");	// dont overwrite existing tokens
+	}
+	numTokens += numDestHandles;
+
+	// Handle user Text Message
+	text = strtok(NULL, "\0");		// the rest of the packet is the text message
+	textLen = strlen(text);
+	setNumMessages(textLen, &numMessages);
+	messageLength = getPacketLength(tokens, numTokens) + textLen;
+
+	for (i = 0; i < numMessages; i++){
+		if (numMessages == 1) {
+			memcpy(subtext, text, textLen);
+		}
+		else if (i == numMessages - 1) {
+			memcpy(subtext, text+textPos, textLen);
+		}
+		else {
+			memcpy(subtext, text+textPos, 200);
+			textLen -= 200;
+			textPos += 200;
+		}
+		sendMessageBuf(sendBuf, tokens, numTokens, messageLength, subtext, socketNum, thisHandle, handLen);
+		bzero(subtext, 200);
+	}
+}
+
+void parseCommand(char* input, uint8_t* sendBuf, int socketNum, uint8_t* thisHandle,
+		int handLen) {
 	int commandID = -1;
 	char command[2];
+
 	memcpy(command, input, 2);
-
-	// // Fill token array
-	// while (tokens[i] != NULL) {
-	// 	++i;
-	// 	tokens[i] = strtok(NULL, " ");
-	// }
-	//numTokens = i;
-
-
 	bzero(sendBuf, MAXBUF);
 	commandID = parseID(command);
 	switch (commandID) {
 		case MESSAGE:
 			printf("\tMessage command!\n");
-			sendMessage(sendBuf, input, socketNum, thisHandle);
+			sendMessage(sendBuf, input, socketNum, thisHandle, handLen);
 			break;
 		case BLOCK:
 			printf("\tBlock command!\n");
@@ -147,7 +226,7 @@ void parseCommand(char* input, uint8_t* sendBuf, int socketNum, uint8_t* thisHan
 	}
 }
 
-void run (int socketNum, uint8_t* sendBuf, uint8_t* thisHandle) {
+void run (int socketNum, uint8_t* sendBuf, uint8_t* thisHandle, int handLen) {
 	char input[MAXBUF];
 	//int sendLen = 0;        	// amount of data to send
 
@@ -155,7 +234,7 @@ void run (int socketNum, uint8_t* sendBuf, uint8_t* thisHandle) {
 		bzero(input, MAXBUF);
 		printf("$: ");
 		scanf(" %" xstr(MAXBUF) "[^\n]%*[^\n]", input);
-		parseCommand(input, sendBuf, socketNum, thisHandle);
+		parseCommand(input, sendBuf, socketNum, thisHandle, handLen);
 	}
 	send(socketNum, sendBuf, -1, 0);
 }
@@ -169,8 +248,9 @@ int main(int argc, char * argv[])
 
 	socketNum = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
 	initConnection(socketNum, argv, sendBuf);
-	memcpy(handle, argv[1], strlen(argv[1]));
-	run(socketNum, sendBuf, thisHandle);
+	bzero(sendBuf, MAXBUF);
+	memcpy(thisHandle, argv[1], strlen(argv[1]));
+	run(socketNum, sendBuf, thisHandle, strlen(argv[1]));
 	close(socketNum);
 	
 	return 0;
@@ -180,13 +260,13 @@ void sendToServer(int socketNum, uint8_t* sendBuf, int sendLen, int sendFlag)
 {
 	int sent = 0;	// actual amount of data sent
 
-	sent = send(socketNum, sendBuf, sendLen+1, 0);
+	sent = send(socketNum, sendBuf, sendLen+CHAT_HEADER_SIZE, 0);
 	if (sent < 0)
 	{
 		perror("send call");
 		exit(-1); 
 	}
-	printf("\tString sent: %s\n", sendBuf+3);
+	printf("\tString sent: %s\n", sendBuf + CHAT_HEADER_SIZE);
 	printf("\tAmount of data sent: %d\n", sent);
 }
 
