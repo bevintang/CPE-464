@@ -20,7 +20,7 @@
 
 #include "networks.h"
 
-#define MAXBUF 1400
+#define MAXBUF 1401
 #define DEBUG_FLAG 1
 #define MESSAGE 5	// flag = 5
 #define BLOCK 69
