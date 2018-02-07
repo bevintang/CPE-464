@@ -27,7 +27,7 @@
 #define UNBLOCK 70
 #define LIST 10		// flag = 10
 #define EXIT 8		// flag = 8
-#define NEW_CLIENT 69
+#define NEW_CLIENT 1
 #define CHAT_HEADER_SIZE 3
 #define xstr(a) str(a)
 #define str(a) #a
@@ -36,7 +36,7 @@ void sendToServer(int socketNum, uint8_t* sendBuf, int sendLen, int sendFlag);
 void checkArgs(int argc, char * argv[]);
 
 void attachChatHeader(uint8_t* sendBuf, uint16_t size, uint8_t flag) {
-	uint16_t trueSize = htons(size + CHAT_HEADER_SIZE);
+	uint16_t trueSize = htons(size + CHAT_HEADER_SIZE + 1);
 	sendBuf[0] = ((trueSize & 0xff00) >> 8);	// insert MSB
 	sendBuf[1] = trueSize & 0x00ff;				// insert LSB
 	sendBuf[2] = flag;
@@ -45,7 +45,7 @@ void attachChatHeader(uint8_t* sendBuf, uint16_t size, uint8_t flag) {
 void initConnection(int socketNum, char** argv, uint8_t* sendBuf) {
 	attachChatHeader(sendBuf, strlen(argv[1]) + CHAT_HEADER_SIZE, NEW_CLIENT);
 	memcpy(sendBuf + CHAT_HEADER_SIZE, argv[1], strlen(argv[1]));
-	sendToServer(socketNum, sendBuf, strlen(argv[1]), 0);
+	sendToServer(socketNum, sendBuf, strlen(argv[1])+1, 0);
 }
 
 int parseID(char* token) {
@@ -74,7 +74,7 @@ uint16_t getPacketLength(char** tokens, int numTokens) {
 	uint16_t totalLength = 0;
 	int i = 0;
 
-	for (i = 0; i < numTokens; i++) {
+	for (i = 1; i < numTokens; i++) {
 		totalLength += strlen(tokens[i]);
 	}
 	return totalLength;
@@ -114,7 +114,7 @@ void setNumMessages(int length, int* numMessages) {
 
 void sendMessageBuf(uint8_t* sendBuf, char** tokens, int numTokens, 
 		uint16_t messageLength, char* text, int socketNum, uint8_t* thisHandle,
-		int handLen) {
+		int handLen, int numDestHandles) {
 
 	int bufPos = CHAT_HEADER_SIZE;
 	int i = 0;
@@ -127,7 +127,8 @@ void sendMessageBuf(uint8_t* sendBuf, char** tokens, int numTokens,
 	sendBuf[bufPos++] = (uint8_t)handLen;
 	memcpy(sendBuf + bufPos, thisHandle, handLen);
 	bufPos += handLen;
-	for (i = 0; i < numTokens; i++) {
+	sendBuf[bufPos++] = (uint8_t)numDestHandles;
+	for (i = 1; i < numTokens; i++) {
 		tokLen = strlen(tokens[i]);
 		sendBuf[bufPos] = tokLen;
 		memcpy(sendBuf+bufPos+1, tokens[i], tokLen);
@@ -138,9 +139,8 @@ void sendMessageBuf(uint8_t* sendBuf, char** tokens, int numTokens,
 
 	// Now attach message
 	memcpy(sendBuf+bufPos, text, strlen(text));
-	sendBuf[bufPos+strlen(text)] = '\0';
 	printf("Client: %s\n", text);
-	sendToServer(socketNum, sendBuf, messageLength + handLen + strlen(text)+1, 0);
+	sendToServer(socketNum, sendBuf, messageLength + handLen + strlen(text) + 1, 0);
 }
 
 void sendMessage(uint8_t* sendBuf, char* input, int socketNum, uint8_t* thisHandle,
@@ -191,7 +191,7 @@ void sendMessage(uint8_t* sendBuf, char* input, int socketNum, uint8_t* thisHand
 			textLen -= 200;
 			textPos += 200;
 		}
-		sendMessageBuf(sendBuf, tokens, numTokens, messageLength, subtext, socketNum, thisHandle, handLen);
+		sendMessageBuf(sendBuf, tokens, numTokens, messageLength, subtext, socketNum, thisHandle, handLen, numDestHandles);
 		bzero(subtext, 200);
 	}
 }

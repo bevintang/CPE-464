@@ -24,8 +24,9 @@
 #define MESSAGE 5	// flag = 5
 #define LIST 10		// flag = 10
 #define EXIT 8		// flag = 8
-#define NEW_CLIENT 69
-#define DEBUG_FLAG 1 
+#define NEW_CLIENT 1
+#define DEBUG_FLAG 1
+#define CHAT_HEADER_SIZE 3 
 
 typedef struct {
 	int fd;
@@ -37,6 +38,13 @@ int checkArgs(int argc, char *argv[]);
 
 void error(char* message) {
 	printf("%s\n", message);
+}
+
+void attachChatHeader(uint8_t* buf, uint16_t size, uint8_t flag) {
+	uint16_t trueSize = htons(size + CHAT_HEADER_SIZE + 1);
+	buf[0] = ((trueSize & 0xff00) >> 8);	// insert MSB
+	buf[1] = trueSize & 0x00ff;				// insert LSB
+	buf[2] = flag;
 }
 
 /* Sets the fd of the set where clients occupy the corresponding socket number */
@@ -100,12 +108,34 @@ void setName (Client* clients, int clientSocket, uint8_t* buf) {
 	printf("Client at socket %d's name set to %s\n", clientSocket, clients[clientSocket].handle);
 }
 
+uint16_t getPacketLength(uint8_t* buf) {
+	uint16_t packetLength = (uint16_t) buf[0] << 8 | buf[1];
+	packetLength = ntohs(packetLength);
+
+	return packetLength;
+}
+
+void forwardMessage(Client* clients, uint8_t* buf) {
+	uint16_t packetLength = getPacketLength(buf);
+	int srcLen = buf[CHAT_HEADER_SIZE];
+	int bufPos = CHAT_HEADER_SIZE+1;
+	char src[100];
+
+	memcpy(src, buf+bufPos, srcLen);
+	printf("Packet length: %u\n", packetLength);
+
+
+}
+
 void parseCommand(Client* clients, int clientSocket, uint8_t* buf) {
 	uint8_t commandID = buf[2];
+
+	printf("Flag = %u\n", commandID);
 
 	switch (commandID) {
 		case MESSAGE:
 			printf("\tIncoming Message!\n");
+			forwardMessage(clients, buf);
 			break;
 		case LIST:
 			printf("\tClient Requests List of handles!\n");
@@ -116,6 +146,10 @@ void parseCommand(Client* clients, int clientSocket, uint8_t* buf) {
 		case NEW_CLIENT:
 			printf("\tNew client!\n");
 			setName(clients, clientSocket, buf);
+			break;
+		case 0:
+			printf("\tUser at socket %d has terminated Client...closing socket\n", clientSocket);
+			close(clientSocket);
 			break;
 	}
 }
@@ -134,7 +168,7 @@ void recvFromClient(Client* clients, int clientSocket, uint8_t* buf)
 	parseCommand(clients, clientSocket, buf);
 
 	// Display buffer contents
-	printf("Message received, length: %d Data: %s\n", messageLen, buf+3);
+	printf("Message received from socket %d, length: %d Data: %s%s\n", clientSocket, messageLen, buf+3, buf+9);
 }
 
 void recvRequest(int clientSocket, fd_set* fds, uint8_t* buf, int* numClients,
